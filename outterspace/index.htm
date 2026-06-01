@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="description" content="Virtual Tour"/>
+<script>(function(i,s,o,g,r,a,m){i["GoogleAnalyticsObject"]=r;i[r]=i[r]||function(){(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)})(window,document,"script","//www.google-analytics.com/analytics.js","ga");ga("create", "UA-116087-1", "auto"); ga("send", "pageview");ga("create", "UA-116087-3", "auto", "client1"); ga("client1.send", "pageview");</script>
+    <title>فضای دانشگاه</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <meta name="viewport" content="user-scalable=no, initial-scale=0.5, width=device-width" />
+    <link rel="shortcut icon" href="../icons/logo1.ico" type="image/x-icon">
+    <style>
+        #icon {
+          display: block;
+          position: fixed;
+          top: 15px;
+          right: 20px;
+          z-index: 99;
+          width: 10%;
+        }
+      </style>
+    <script src="lib/tdvplayer.js"></script>
+    <script src="script.js"></script>
+    <script src="lib/ThreeWebGL.js"></script>
+    <script type="text/javascript">
+        var player;
+        var playersPlayingTmp = [];
+        var isInitialized = false;
+
+        function loadTour()
+        {
+            if(isInitialized)
+                return;
+
+            isInitialized = true;
+
+            var beginFunc = function(event){
+                if(event.name == 'begin')
+                {
+                    var camera = event.data.source.get('camera');
+                    if(camera && camera.get('initialSequence') && camera.get('initialSequence').get('movements').length > 0)
+                        return;
+                }
+
+                player.unbindOnObjectsOf('PanoramaPlayListItem', 'begin', beginFunc, player, true);
+                player.unbind('stateChange', beginFunc, player, true);
+                window.parent.postMessage("tourLoaded", '*');
+
+                disposePreloader();
+
+                onVirtualTourLoaded();
+            };
+
+            var settings = new TDV.PlayerSettings();
+            
+            settings.set(TDV.PlayerSettings.CONTAINER, document.getElementById('viewer'));
+            settings.set(TDV.PlayerSettings.SCRIPT_URL, 'script.js');
+            settings.set(TDV.PlayerSettings.FLASH_EXPRESS_INSTALLER_URL, 'lib/ExpressInstall.swf');
+            settings.set(TDV.PlayerSettings.FLASH_AUDIO_PLAYER_URL, 'lib/AudioPlayer.swf');
+            settings.set(TDV.PlayerSettings.FLASH_PANORAMA_PLAYER_URL, 'lib/PanoramaRenderer.swf');
+            settings.set(TDV.PlayerSettings.THREE_JS_WEBGL_URL, 'lib/ThreeWebGL.js');
+            settings.set(TDV.PlayerSettings.WEBVR_POLYFILL_URL, 'lib/WebVRPolyfill.js');
+            settings.set(TDV.PlayerSettings.HLS_URL, 'lib/Hls.js');
+            window.tdvplayer = player = TDV.PlayerAPI.create(settings);
+            player.bind('stateChange', beginFunc, player, true);
+            player.bindOnObjectsOf('PanoramaPlayListItem', 'begin', beginFunc, player, true);
+            player.bindOnObject('rootPlayer', 'start', function(e){
+                var queryDict = {}; location.search.substr(1).split("&").forEach(function(item) {var k = item.split("=")[0], v = decodeURIComponent(item.split("=")[1]);queryDict[k] = v});
+                if("media-index" in queryDict){
+                    setMediaByIndex(parseInt(queryDict["media-index"]) - 1);
+                }
+                else if("media-name" in queryDict){
+                    setMediaByName(queryDict["media-name"]);
+                }
+
+                player.getById('rootPlayer').bind('tourEnded', function(){
+                    onVirtualTourEnded();
+                }, player, true);
+            }, player, false);
+
+            /* Listen messages */
+            window.addEventListener('message', function (e) {
+                //Listen to messages for make actions to player in the format function:param1,param2
+                var action = e.data;
+                if (action == 'pauseTour' || action == 'resumeTour') {
+                    this[action].apply(this);
+                }
+            });
+        }
+
+        function pauseTour()
+        {
+            var playLists = player.getByClassName('PlayList');
+            for(var i = 0, count = playLists.length; i<count; i++)
+            {
+                var playList = playLists[i];
+                var index = playList.get('selectedIndex');
+                if(index != -1)
+                {
+                    var item = playList.get('items')[index];
+                    var itemPlayer = item.get('player');
+                    if(itemPlayer && itemPlayer.pause)
+                    {
+                        playersPlayingTmp.push(itemPlayer);
+                        itemPlayer.pause();
+                    }
+                }
+            }
+
+            player.getById('pauseGlobalAudios')();
+        }
+
+        function resumeTour()
+        {
+            while(playersPlayingTmp.length)
+            {
+                var viewer = playersPlayingTmp.pop();
+                viewer.play();
+            }
+
+            player.getById('resumeGlobalAudios')();
+        }
+
+        function onVirtualTourLoaded()
+        {
+
+        }
+
+        function onVirtualTourEnded()
+        {
+
+        }
+
+        function setMediaByIndex(index)
+        {
+            if(window.tdvplayer !== undefined) {
+                var rootPlayer = window.tdvplayer.getById('rootPlayer');
+                rootPlayer.setMainMediaByIndex(index);
+            }
+        }
+
+        function setMediaByName(name)
+        {
+            if(window.tdvplayer !== undefined) {
+                var rootPlayer = window.tdvplayer.getById('rootPlayer');
+                rootPlayer.setMainMediaByName(name);
+            }
+        }
+
+        function showPreloader()
+        {
+            var preloadContainer = document.getElementById('preloadContainer');
+            preloadContainer.style.opacity = 1;
+        }
+
+        function disposePreloader()
+        {
+            var transitionEnd = transitionEndEventName();
+            var preloadContainer = document.getElementById('preloadContainer');
+
+            
+
+            var transitionEndName = transitionEndEventName();
+            if(transitionEndName)
+            {
+                preloadContainer.addEventListener(transitionEnd, hide, false);
+
+                preloadContainer.style.opacity = 0;
+            }
+            else
+            {
+                hide();
+            }
+
+            function hide()
+            {
+                preloadContainer.style.visibility = 'hidden';
+                preloadContainer.style.display = 'none';
+            }
+
+            function transitionEndEventName () {
+                var i,
+                        undefined,
+                        el = document.createElement('div'),
+                        transitions = {
+                            'transition':'transitionend',
+                            'OTransition':'otransitionend',
+                            'MozTransition':'transitionend',
+                            'WebkitTransition':'webkitTransitionEnd'
+                        };
+
+                for (i in transitions) {
+                    if (transitions.hasOwnProperty(i) && el.style[i] !== undefined) {
+                        return transitions[i];
+                    }
+                }
+
+                return undefined;
+            }
+        }
+
+        function onBodyClick(){
+            document.body.removeEventListener("click", onBodyClick);
+            document.body.removeEventListener("touchend", onBodyClick);
+            loadTour();
+        }
+
+        function onLoad() {
+            if (isOVRWeb()){
+                showPreloader();
+                loadTour();
+                return;
+            }
+
+            showPreloader();
+loadTour()
+        }
+
+        function playVideo(video) {
+            function isSafariDesktopV11orGreater() {
+                return /^((?!chrome|android|crios|ipad|iphone).)*safari/i.test(navigator.userAgent) && parseFloat(/Version\/([0-9]+\.[0-9]+)/i.exec(navigator.userAgent)[1]) >= 11;
+            }
+
+            function detectUserAction() {
+                var onVideoClick = function(e) {
+                    if(video.paused) {
+                        video.play();
+                    }
+                    video.muted = false;
+                    e.stopPropagation();
+                    e.stopImmediatePropagation();
+                    e.preventDefault();
+                    video.removeEventListener('click', onVideoClick);
+                    video.removeEventListener('touchend', onVideoClick);
+                };
+                video.addEventListener("click", onVideoClick);
+                video.addEventListener("touchend", onVideoClick);
+            }
+
+            if (isSafariDesktopV11orGreater()) {
+                video.muted = true;
+                video.play();
+            } else {
+                var canPlay = true;
+                var promise = video.play();
+                if (promise) {
+                    promise.catch(function() {
+                        video.muted = true;
+                        video.play();
+                        detectUserAction();
+                    });
+                } else {
+                    canPlay = false;
+                }
+
+                if (!canPlay || video.muted) {
+                    detectUserAction();
+                }
+            }
+        }
+
+        function isOVRWeb(){
+            return window.location.hash.substring(1).split('&').indexOf('ovrweb') > -1;
+        }
+    </script>
+    <style type="text/css">
+        html, body { width: 100%; height: 100%; margin: 0; padding: 0; }
+        #viewer { background-color: #FFFFFF; z-index:1; position:absolute; width: 100%; height: 100%; top: 0; }
+        #preloadContainer { z-index:2; position:relative; width:100%; height:100%; transition: opacity 1s; -webkit-transition: opacity 1s; -moz-transition: opacity 1s; -o-transition: opacity 1s;}
+    </style>
+    
+</head>
+<body onload="onLoad()">
+    <div id="preloadContainer" style="background-color:rgba(255,255,255,1)"><div style="z-index: 4; position: absolute; left: 0%; top: 50%; width: 100.00%; height: 10.00%"><div style="text-align:left; color:#000; "><DIV STYLE="text-align:center;"><SPAN STYLE="letter-spacing:0px;color:#777777;font-size:14px;font-family:Arial, Helvetica, sans-serif;">Loading virtual tour. Please wait...</SPAN></DIV><p STYLE="margin:0; line-height:12px;"><BR STYLE="letter-spacing:0px;color:#000000;font-size:12px;font-family:Arial, Helvetica, sans-serif;"/></p></div></div></div>
+    <div id="viewer"></div>
+    <div id="icon">
+        <svg
+          version="1.0"
+          xmlns="http://www.w3.org/2000/svg"
+          width="100%"
+          height="100%"
+          viewBox="0 0 2234.000000 2094.000000"
+          preserveAspectRatio="xMidYMid meet"
+        >
+          <g
+            transform="translate(0.000000,2094.000000) scale(0.100000,-0.100000)"
+            fill="#000000"
+            stroke="none"
+          >
+            <path
+              d="M12880 20816 c-322 -148 -466 -221 -690 -351 -578 -337 -943 -587
+  -1350 -927 -341 -285 -647 -570 -821 -765 -158 -177 -494 -573 -606 -717 -298
+  -378 -619 -906 -903 -1482 -116 -237 -189 -408 -304 -716 -220 -592 -348
+  -1051 -415 -1488 -42 -275 -111 -789 -121 -900 -6 -73 -10 -936 -10 -2376 l0
+  -2261 308 -5 c330 -6 358 -3 383 44 10 18 13 439 13 2078 1 1978 2 2057 20
+  2117 26 87 70 134 164 179 94 44 116 64 152 135 33 64 48 120 120 444 137 612
+  414 1250 723 1665 96 128 411 442 577 574 245 195 591 411 822 513 494 217
+  1124 301 1743 230 208 -24 365 -57 365 -76 -1 -19 -61 -67 -306 -244 -548
+  -395 -640 -453 -998 -634 -276 -140 -499 -278 -676 -419 -145 -115 -405 -385
+  -518 -535 -264 -354 -436 -717 -512 -1080 -57 -273 -85 -697 -61 -909 36 -305
+  136 -652 262 -902 103 -205 198 -336 389 -532 352 -361 768 -621 1240 -774
+  219 -71 410 -107 640 -121 143 -8 170 -16 197 -57 15 -23 16 -98 14 -866 -2
+  -809 -2 -840 16 -834 79 30 216 119 279 181 129 128 174 256 174 503 l0 142
+  50 0 c71 0 195 27 257 56 57 27 107 79 131 133 8 20 17 77 20 128 5 98 -6 146
+  -38 163 -9 5 -75 8 -146 8 -113 -1 -136 2 -189 22 -147 57 -304 308 -239 382
+  30 33 70 46 282 89 373 76 468 105 711 215 261 119 336 157 437 223 250 162
+  544 448 701 681 81 122 362 607 411 710 187 398 269 770 279 1265 5 231 2 291
+  -21 535 -39 396 -63 523 -146 765 -100 290 -292 673 -458 915 -290 423 -652
+  737 -1262 1093 -155 90 -144 64 -151 365 -5 211 -10 274 -28 352 -61 271 -157
+  453 -341 644 -58 60 -104 98 -144 118 l-59 30 54 -99 c188 -347 229 -475 229
+  -713 0 -195 -49 -414 -102 -453 l-27 -20 -158 43 c-377 103 -662 143 -1013
+  144 -278 0 -371 -9 -790 -80 -428 -73 -614 -118 -865 -211 -209 -78 -525 -238
+  -697 -355 -56 -37 -119 -51 -133 -29 -3 5 29 54 71 108 272 349 456 528 1199
+  1167 465 401 685 557 1205 858 314 182 406 231 650 344 153 71 256 125 275
+  144 27 27 30 39 37 113 3 45 7 385 7 755 l1 672 -32 -1 c-19 -1 -139 -49 -278
+  -113z m831 -4316 c260 -108 541 -302 779 -540 592 -592 938 -1458 890 -2227
+  -63 -987 -548 -1821 -1377 -2366 -365 -240 -760 -399 -958 -385 l-50 3 2 110
+  c5 209 64 435 173 662 94 196 159 282 395 523 307 313 343 360 461 604 84 175
+  135 316 166 460 19 88 22 133 22 341 0 402 -50 639 -190 905 -67 126 -146 230
+  -279 368 -234 243 -457 397 -783 540 -28 13 -52 27 -52 32 0 13 710 1000 719
+  1000 5 0 41 -14 82 -30z m-891 -1515 c170 -33 369 -99 506 -168 289 -147 503
+  -425 601 -782 36 -132 38 -310 5 -454 -32 -140 -69 -256 -91 -282 l-19 -23
+  -153 49 c-129 42 -166 50 -229 50 -84 0 -119 -14 -173 -70 -40 -41 -64 -94
+  -112 -246 -71 -228 -201 -390 -385 -482 -52 -26 -124 -55 -160 -64 -87 -23
+  -236 -22 -314 1 -246 73 -457 298 -512 544 -69 312 139 660 468 780 72 27 76
+  27 303 25 163 -2 226 0 215 8 -8 6 -51 28 -94 50 -79 38 -82 39 -192 39 -246
+  0 -437 -34 -567 -102 -217 -113 -413 -418 -473 -735 -13 -68 -15 -123 -11
+  -243 6 -188 31 -289 112 -458 118 -246 250 -385 460 -483 138 -65 213 -80 435
+  -88 205 -8 246 -17 270 -60 23 -44 15 -871 -9 -910 -6 -10 -72 2 -281 49 -451
+  102 -631 158 -830 260 -270 139 -519 347 -752 626 -290 350 -427 642 -499
+  1064 -30 180 -37 509 -15 688 32 247 108 492 149 480 7 -2 35 -35 62 -73 109
+  -151 177 -195 285 -182 77 9 96 28 155 153 184 390 510 715 883 879 180 79
+  393 145 547 171 99 17 298 11 415 -11z"
+            />
+            <path
+              d="M5508 7843 c-49 -57 -199 -305 -271 -449 -33 -66 -35 -73 -21 -93 9
+  -12 33 -30 54 -41 43 -22 163 -50 213 -50 18 0 27 -4 22 -9 -6 -5 -90 -45
+  -189 -90 -399 -182 -642 -344 -868 -579 -304 -318 -448 -688 -338 -867 53 -86
+  202 -177 370 -229 701 -213 2314 -131 4325 220 895 156 1980 410 2484 581 l83
+  29 -34 37 c-44 47 -140 91 -243 112 -180 38 -516 30 -849 -20 -1554 -234
+  -2525 -346 -3516 -405 -294 -18 -973 -24 -1200 -11 -218 12 -411 32 -550 56
+  -326 57 -508 165 -470 279 38 117 460 372 918 555 185 74 234 98 337 166 145
+  96 263 237 352 420 38 79 44 100 39 131 -19 98 -209 202 -468 254 -119 25
+  -160 25 -180 3z"
+            />
+            <path
+              d="M20330 6618 c-41 -45 -163 -162 -270 -262 -552 -510 -690 -641 -749
+  -710 -161 -190 -261 -396 -261 -536 l0 -38 -267 -209 c-661 -514 -891 -717
+  -1120 -988 l-43 -50 0 31 c0 43 34 379 76 749 34 301 36 373 10 394 -9 8 -23
+  -17 -56 -102 -24 -62 -91 -205 -147 -320 -57 -114 -108 -229 -113 -255 -35
+  -170 -97 -778 -111 -1089 -21 -468 16 -748 128 -965 84 -163 202 -252 350
+  -265 182 -15 344 58 517 232 178 180 341 485 408 768 12 53 25 96 28 94 3 -2
+  34 -17 70 -35 171 -83 330 -61 471 66 48 43 58 48 130 58 99 14 194 59 262
+  122 47 46 58 51 122 61 90 14 195 65 264 130 29 28 59 51 65 51 6 0 44 15 83
+  34 181 87 352 318 442 598 52 165 62 246 71 578 6 217 13 325 24 375 9 38 16
+  73 16 77 0 13 -77 9 -88 -5 -6 -6 -35 -66 -64 -132 -30 -66 -80 -163 -113
+  -215 -32 -52 -65 -108 -74 -125 -22 -44 -25 -144 -7 -272 9 -62 19 -158 22
+  -212 6 -92 5 -102 -16 -136 -54 -87 -178 -124 -233 -69 -15 15 -31 23 -38 19
+  -6 -4 -29 -45 -50 -90 -59 -128 -118 -185 -192 -185 -19 0 -46 9 -60 20 -46
+  37 -51 34 -127 -88 -22 -34 -54 -71 -72 -82 -48 -29 -109 -26 -148 7 -40 33
+  -53 26 -97 -50 -44 -74 -142 -162 -206 -183 -94 -31 -213 -7 -477 98 -335 134
+  -513 161 -791 122 -61 -8 -113 -13 -115 -11 -5 5 397 339 691 574 391 312 660
+  519 1215 938 587 443 628 475 737 582 195 191 319 397 359 593 8 43 14 94 12
+  115 l-3 37 -152 -136 c-199 -177 -423 -363 -653 -541 -330 -257 -785 -602
+  -788 -600 -7 6 55 94 121 173 105 124 288 291 582 532 298 244 366 315 430
+  452 19 40 41 100 50 133 14 57 33 226 24 224 -2 0 -38 -37 -79 -81z m-2165
+  -3364 c126 -31 199 -84 244 -177 17 -34 34 -88 37 -119 6 -52 3 -65 -25 -122
+  -74 -151 -260 -265 -432 -266 -210 -1 -353 166 -388 455 -19 159 -23 149 67
+  183 68 27 175 53 267 66 47 6 164 -4 230 -20z"
+            />
+            <path
+              d="M17531 6569 c-41 -50 -118 -150 -172 -221 l-99 -131 79 -31 c86 -35
+  194 -96 255 -145 44 -35 47 -35 140 38 119 93 216 240 216 328 0 54 -29 88
+  -123 147 -57 35 -203 106 -219 106 -2 0 -36 -41 -77 -91z"
+            />
+            <path
+              d="M17877 5917 c-62 -78 -133 -168 -156 -199 -24 -32 -46 -58 -50 -58
+  -3 0 -13 13 -22 29 -9 16 -41 48 -70 71 -55 44 -260 150 -290 150 -18 0 -119
+  -120 -267 -316 l-91 -122 47 -17 c72 -27 168 -83 254 -148 69 -52 82 -58 111
+  -52 66 14 167 86 238 172 44 52 89 133 89 159 0 13 6 15 28 10 49 -12 155 -70
+  234 -128 88 -65 108 -69 176 -36 139 70 250 268 212 382 -24 73 -137 163 -283
+  225 l-47 20 -113 -142z"
+            />
+            <path
+              d="M3015 5854 l-178 -177 -19 39 c-10 21 -30 51 -45 66 -30 32 -150 116
+  -202 143 l-34 17 -205 -205 -205 -205 44 -22 c72 -37 150 -94 206 -150 52 -51
+  54 -53 98 -47 105 15 274 135 332 236 15 25 28 48 29 49 6 8 143 -89 194 -136
+  44 -43 61 -52 90 -52 89 0 262 128 314 233 50 100 28 198 -66 281 -49 45 -145
+  106 -166 106 -6 0 -90 -79 -187 -176z"
+            />
+            <path
+              d="M21319 5838 c-100 -126 -218 -280 -232 -304 -4 -7 20 -21 67 -38 89
+  -33 200 -97 284 -165 50 -42 66 -49 81 -42 10 6 52 46 94 91 183 195 197 358
+  39 473 -40 30 -207 117 -224 117 -2 0 -51 -60 -109 -132z"
+            />
+            <path
+              d="M848 5782 c-52 -64 -130 -165 -175 -223 l-81 -106 81 -31 c97 -37
+  224 -113 295 -177 l52 -47 88 89 c148 150 202 286 152 387 -35 74 -137 149
+  -282 209 l-37 16 -93 -117z"
+            />
+            <path
+              d="M15801 5428 c-78 -93 -138 -209 -155 -296 -11 -58 -22 -80 -79 -157
+  -135 -182 -216 -360 -217 -472 0 -80 11 -108 66 -164 l44 -45 -117 -86 c-843
+  -614 -1988 -1036 -3288 -1213 -381 -51 -722 -79 -1185 -96 -529 -19 -790 4
+  -1255 111 -213 49 -276 55 -405 40 -271 -31 -511 -153 -727 -368 -166 -166
+  -310 -356 -543 -718 -474 -733 -703 -1013 -1001 -1225 -53 -37 -108 -82 -123
+  -99 -31 -37 -37 -94 -8 -86 9 2 69 19 132 36 211 58 375 156 550 330 156 154
+  274 312 587 781 174 260 247 355 332 430 89 78 214 151 327 189 87 29 115 33
+  229 37 125 5 136 3 305 -37 421 -99 530 -119 780 -141 169 -15 734 -6 1009 16
+  1465 115 2701 545 3946 1370 256 170 450 325 731 582 l101 93 220 -11 c262
+  -13 344 -5 406 38 62 43 114 116 185 261 63 128 66 137 70 222 4 78 1 94 -20
+  142 -46 99 -88 128 -289 203 -242 90 -344 149 -441 253 -30 33 -64 81 -74 106
+  -11 25 -22 46 -26 46 -3 0 -34 -33 -67 -72z m4 -447 c51 -23 141 -121 154
+  -168 8 -29 7 -44 -7 -72 -23 -51 -131 -158 -166 -167 -61 -15 -180 40 -221
+  102 -17 26 -17 30 -2 78 9 28 29 72 45 96 38 59 124 150 143 150 7 0 32 -9 54
+  -19z m437 -167 c168 -60 267 -130 271 -190 2 -24 -4 -32 -33 -46 -71 -35 -295
+  -47 -421 -22 l-26 5 48 95 c27 52 54 114 60 139 6 25 15 45 20 45 4 0 41 -12
+  81 -26z"
+            />
+            <path
+              d="M5462 4932 c-19 -64 -59 -182 -89 -262 -31 -80 -66 -176 -79 -213
+  -65 -190 -134 -727 -134 -1048 0 -613 -177 -913 -604 -1024 -143 -37 -139 -40
+  -89 63 92 187 161 397 208 630 44 225 55 337 86 872 13 234 36 381 84 528 19
+  60 35 128 35 151 0 37 -22 111 -33 111 -3 0 -45 -73 -93 -162 -204 -377 -235
+  -447 -286 -637 l-31 -116 -8 -425 c-10 -561 -33 -782 -102 -969 -69 -190 -25
+  -380 112 -476 39 -28 49 -30 124 -30 68 1 92 5 141 28 201 93 394 366 526 745
+  l32 92 29 -44 c16 -24 49 -62 73 -84 122 -112 299 -132 465 -51 56 27 93 60
+  241 210 192 194 210 206 292 187 24 -5 70 -8 103 -5 123 9 225 87 357 275 65
+  90 85 112 105 112 58 0 139 61 197 149 76 115 133 279 161 466 21 140 20 165
+  -6 165 -52 0 -73 -28 -100 -136 -43 -175 -128 -256 -217 -210 -17 9 -33 16
+  -36 16 -3 0 -24 -37 -47 -82 -75 -151 -156 -247 -222 -263 -15 -4 -48 0 -78
+  10 -59 20 -129 16 -180 -11 -18 -9 -84 -67 -148 -128 -64 -62 -136 -124 -161
+  -138 -130 -75 -292 -75 -412 1 -96 61 -156 168 -185 331 -30 166 -6 599 63
+  1156 16 129 24 226 20 249 -7 38 -45 85 -68 85 -8 0 -26 -45 -46 -118z"
+            />
+            <path
+              d="M8077 4939 c-19 -35 -73 -135 -121 -222 -190 -344 -272 -536 -295
+  -687 -6 -36 -12 -267 -15 -515 -7 -582 -28 -860 -80 -1068 l-22 -88 30 7 c124
+  25 258 255 340 583 54 212 71 354 91 761 31 642 59 881 127 1089 23 72 21 162
+  -4 188 -14 14 -19 9 -51 -48z"
+            />
+            <path
+              d="M21309 4748 c-17 -35 -60 -113 -95 -174 -106 -188 -239 -454 -272
+  -545 -56 -158 -62 -207 -62 -551 0 -597 -34 -1071 -89 -1249 -19 -58 -19 -59
+  0 -59 37 0 99 40 138 90 107 136 187 341 245 630 34 169 43 262 61 625 32 643
+  59 887 121 1067 27 82 31 156 9 198 -9 17 -18 30 -20 30 -3 0 -19 -28 -36 -62z"
+            />
+            <path
+              d="M9323 4623 c-120 -151 -233 -299 -233 -306 0 -2 19 -10 43 -17 94
+  -28 256 -121 332 -191 l44 -41 39 30 c78 63 164 170 202 255 24 53 26 146 4
+  193 -25 53 -109 121 -209 170 -50 24 -96 44 -102 44 -6 0 -60 -62 -120 -137z"
+            />
+            <path
+              d="M1840 4743 c-32 -12 -50 -38 -71 -101 -30 -90 -78 -139 -192 -198
+  -137 -70 -249 -146 -320 -216 -83 -84 -192 -249 -279 -422 -85 -170 -136 -244
+  -223 -324 -95 -87 -204 -157 -420 -270 -104 -54 -214 -114 -244 -132 -56 -35
+  -81 -74 -81 -128 l0 -30 62 13 c124 26 278 37 353 25 143 -23 152 -23 206 -5
+  66 22 161 113 232 223 61 93 154 282 209 423 58 151 81 175 232 247 140 67
+  214 115 304 197 115 105 193 237 227 385 15 65 34 321 24 319 -2 0 -11 -3 -19
+  -6z"
+            />
+            <path
+              d="M3674 4406 c-46 -20 -70 -50 -125 -157 -58 -112 -127 -185 -203 -214
+  -43 -17 -54 -17 -105 -6 -31 7 -83 19 -116 27 -72 16 -238 18 -321 3 -152 -26
+  -332 -111 -484 -225 -156 -118 -365 -344 -541 -584 -77 -106 -313 -450 -461
+  -675 -155 -234 -261 -367 -409 -510 -133 -129 -233 -206 -379 -292 -58 -34
+  -124 -73 -147 -87 -44 -26 -83 -77 -83 -108 0 -25 37 -23 156 7 123 31 325
+  129 446 217 259 188 433 378 746 815 175 245 262 352 380 465 207 198 424 307
+  649 324 74 5 101 3 167 -16 60 -17 99 -21 160 -18 118 5 193 43 312 162 109
+  109 181 215 274 409 96 199 183 467 152 467 -6 0 -16 2 -24 5 -7 2 -27 -2 -44
+  -9z"
+            />
+            <path
+              d="M21866 3763 c-26 -43 -94 -172 -152 -287 l-106 -209 39 -23 c277
+  -159 374 -258 402 -407 l8 -47 -81 -77 c-44 -42 -177 -148 -295 -236 -117 -88
+  -221 -173 -231 -190 -20 -32 -36 -104 -26 -114 3 -3 29 5 58 17 110 48 256 91
+  338 100 59 7 103 19 145 39 54 27 67 39 119 118 165 250 255 545 242 798 -6
+  128 -24 201 -73 305 -43 90 -136 188 -231 243 -104 61 -103 61 -156 -30z"
+            />
+            <path
+              d="M16534 3599 c-18 -9 -94 -124 -94 -142 0 -4 -54 -123 -120 -265 -127
+  -273 -142 -322 -95 -322 14 0 25 -2 25 -5 0 -3 -20 -46 -45 -96 -74 -147 -107
+  -257 -113 -376 -5 -118 6 -174 49 -233 70 -96 223 -112 361 -38 72 38 178 147
+  241 249 123 198 207 501 207 754 0 220 -83 386 -224 451 -60 27 -160 39 -192
+  23z m-40 -779 c88 -33 136 -75 175 -152 l33 -67 -23 -48 c-75 -150 -322 -192
+  -413 -70 -44 59 -15 205 65 336 19 32 23 33 63 28 24 -4 69 -16 100 -27z"
+            />
+            <path
+              d="M2937 2318 c-127 -160 -227 -292 -227 -301 0 -3 17 -11 38 -18 101
+  -33 279 -137 336 -198 17 -17 35 -31 41 -31 18 0 113 89 160 150 95 124 127
+  236 89 316 -26 55 -118 131 -218 179 -51 25 -95 45 -98 45 -4 0 -58 -64 -121
+  -142z"
+            />
+            <path
+              d="M1454 1351 l-158 -200 -23 39 c-28 46 -137 122 -236 164 -37 16 -69
+  27 -71 25 -17 -20 -317 -402 -333 -425 l-23 -31 63 -23 c74 -26 167 -81 219
+  -128 32 -29 42 -33 70 -27 107 23 249 142 309 257 18 38 39 68 45 68 22 0 131
+  -61 196 -110 65 -49 69 -51 105 -41 88 24 209 131 259 228 78 155 22 274 -172
+  364 -45 22 -84 39 -87 39 -2 0 -76 -90 -163 -199z"
+            />
+            <path
+              d="M10859 659 c-30 -74 -87 -111 -140 -90 -13 5 -40 30 -59 55 -19 25
+  -42 45 -50 43 -8 -1 -22 -27 -32 -61 l-18 -58 35 -58 c64 -105 112 -258 123
+  -392 4 -43 11 -79 17 -81 31 -7 47 237 21 344 l-13 56 32 12 c18 6 40 20 49
+  30 18 19 18 19 49 0 35 -21 88 -25 119 -8 32 17 58 86 58 157 0 69 -12 80 -30
+  27 -13 -40 -33 -55 -64 -47 -36 8 -56 33 -56 69 0 43 -23 44 -41 2z"
+            />
+            <path
+              d="M10107 624 l-27 -55 39 -68 c71 -121 113 -259 127 -414 7 -81 20 -95
+  37 -41 17 52 12 252 -7 339 -29 129 -103 295 -131 295 -6 0 -23 -25 -38 -56z"
+            />
+            <path
+              d="M11595 623 c-56 -78 -93 -155 -135 -280 -21 -65 -41 -111 -43 -103
+  -3 8 -13 43 -22 78 -9 35 -29 92 -45 128 -31 69 -110 197 -129 209 -7 4 -17
+  -8 -27 -30 -30 -72 -29 -89 10 -139 54 -71 122 -216 162 -345 36 -113 48 -140
+  59 -129 3 3 24 66 46 139 50 166 89 261 140 339 34 53 39 68 39 120 0 33 -4
+  60 -10 60 -5 0 -25 -21 -45 -47z"
+            />
+            <path
+              d="M11981 608 c-11 -35 -29 -96 -41 -135 -30 -103 -76 -208 -126 -285
+  -41 -63 -42 -69 -37 -122 3 -31 9 -56 14 -56 31 0 152 231 188 359 11 40 22
+  75 24 77 2 3 12 -26 22 -63 32 -124 161 -369 189 -360 6 2 18 28 28 59 l19 55
+  -55 82 c-61 91 -110 202 -156 351 -17 55 -35 100 -40 100 -4 0 -17 -28 -29
+  -62z"
+            />
+          </g>
+        </svg>
+      </div>
+</body>
+</html>
